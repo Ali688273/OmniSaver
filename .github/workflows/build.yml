@@ -19,6 +19,10 @@ jobs:
         java-version: '17'
         distribution: 'temurin'
 
+    # تنظیم خودکار گرادل و ران‌تایم
+    - name: Setup Gradle
+      uses: gradle/actions/setup-gradle@v3
+
     # ۱. ساخت فایل کی‌استور امضا
     - name: Generate Release Keystore
       run: |
@@ -32,7 +36,7 @@ jobs:
           -keypass 123456 \
           -dname "CN=OmniSaver, OU=Development, O=OmniSaver, L=City, S=State, C=US"
 
-    # ۲. ثبت مانیفست استاندارد
+    # ۲. اصلاح و تزریق مانیفست استاندارد
     - name: Fix Manifest XML
       run: |
         mkdir -p app/src/main
@@ -61,13 +65,11 @@ jobs:
         </manifest>
         EOF
 
-    # ۳. اجباری کردن اجرای بیلد با Wrapper اختصاصی پروژه
+    # ۳. کامپایل مستقیم با دستور سیستم‌عامل
     - name: Build Release APK
-      run: |
-        chmod +x gradlew
-        ./gradlew assembleRelease --no-daemon
+      run: gradle assembleRelease --no-daemon
 
-    # ۴. آپلود فایل APK
+    # ۴. آپلود فایل خروجی
     - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
