@@ -22,16 +22,14 @@ jobs:
     - name: Setup Gradle
       uses: gradle/actions/setup-gradle@v3
 
-    # ساخت فایل کلید امضا پیش از ساخت برنامه
+    # ساخت فایل کلید امضا دقیقاً داخل پوشه app
     - name: Generate Release Keystore
       run: |
-        keytool -genkeypair -v -keystore my-release-key.jks -keyalg RSA -keysize 2048 -validity 10000 -alias my-alias -storepass mypassword -keypass mypassword -dname "CN=OmniSaver, OU=App, O=Dev, L=City, S=State, C=IR"
+        keytool -genkeypair -v -keystore app/my-release-key.jks -keyalg RSA -keysize 2048 -validity 10000 -alias my-alias -storepass mypassword -keypass mypassword -dname "CN=OmniSaver, OU=App, O=Dev, L=City, S=State, C=IR"
 
-    # کامپایل و امضای هم‌زمان توسط Gradle
     - name: Build Signed Release APK
       run: gradle assembleRelease
 
-    # آپلود فایل نهایی امضاشده
     - name: Upload Signed APK
       uses: actions/upload-artifact@v4
       with:
