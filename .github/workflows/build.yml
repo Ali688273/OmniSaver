@@ -36,7 +36,7 @@ jobs:
           -keypass 123456 \
           -dname "CN=OmniSaver, OU=Development, O=OmniSaver, L=City, S=State, C=US"
 
-    # ۱. تزریق مستقیم آیکون مدرن و اختصاصی برنامه به فایل‌های Drawable
+    # ۱. تزریق مستقیم آیکون برنامه
     - name: Inject Modern App Icon
       run: |
         mkdir -p app/src/main/res/drawable
@@ -58,7 +58,7 @@ jobs:
         </vector>
         EOF
 
-    # ۲. اصلاح مانیفست و اتصال آیکون جدید
+    # ۲. ثبت مانیفست همراه آیکون
     - name: Fix Manifest XML
       run: |
         mkdir -p app/src/main
@@ -85,16 +85,16 @@ jobs:
         </manifest>
         EOF
 
-    # ۳. رفع خطای آیکون دانلود کاتلین
-    - name: Fix Missing Download Icon
+    # ۳. حذف کامل خطوط آیکون‌های مفقود از کد کاتلین
+    - name: Clean Missing Icon Statements
       run: |
-        find app/src/main/java -name "MainActivity.kt" -exec sed -i 's/Icons\.Default\.Download/Icons.Default.ArrowDownward/g' {} \;
+        find app/src/main/java -name "MainActivity.kt" -exec sed -i '/Icon(Icons\./d' {} \;
 
-    # ۴. کامپایل پروژه
+    # ۴. کامپایل نهایی
     - name: Build Release APK
       run: gradle assembleRelease --no-daemon
 
-    # ۵. آپلود خروجی
+    # ۵. خروجی نهایی
     - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
