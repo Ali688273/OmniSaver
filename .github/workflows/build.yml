@@ -36,7 +36,16 @@ jobs:
           -keypass 123456 \
           -dname "CN=OmniSaver, OU=Development, O=OmniSaver, L=City, S=State, C=US"
 
-    # ۱. تزریق مستقیم آیکون برنامه
+    # ۱. تزریق کتابخانه آیکون‌های متریال به gradle تا ارور کاتلین کلاً برطرف بشه
+    - name: Add Material Icons Dependency
+      run: |
+        if [ -f "app/build.gradle.kts" ]; then
+          echo 'dependencies { implementation("androidx.compose.material:material-icons-extended:1.6.0") }' >> app/build.gradle.kts
+        elif [ -f "app/build.gradle" ]; then
+          echo 'dependencies { implementation "androidx.compose.material:material-icons-extended:1.6.0" }' >> app/build.gradle
+        fi
+
+    # ۲. ساخت آیکون اصلی برنامه (لوگو)
     - name: Inject Modern App Icon
       run: |
         mkdir -p app/src/main/res/drawable
@@ -58,7 +67,7 @@ jobs:
         </vector>
         EOF
 
-    # ۲. ثبت مانیفست همراه آیکون
+    # ۳. ثبت مانیفست
     - name: Fix Manifest XML
       run: |
         mkdir -p app/src/main
@@ -85,16 +94,11 @@ jobs:
         </manifest>
         EOF
 
-    # ۳. حذف کامل خطوط آیکون‌های مفقود از کد کاتلین
-    - name: Clean Missing Icon Statements
-      run: |
-        find app/src/main/java -name "MainActivity.kt" -exec sed -i '/Icon(Icons\./d' {} \;
-
-    # ۴. کامپایل نهایی
+    # ۴. کامپایل پروژه
     - name: Build Release APK
       run: gradle assembleRelease --no-daemon
 
-    # ۵. خروجی نهایی
+    # ۵. آپلود APK امضاشده
     - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
