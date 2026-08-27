@@ -30,7 +30,24 @@ jobs:
         mkdir -p ~/.gradle
         echo "org.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m" >> ~/.gradle/gradle.properties
 
-    # ۲. تنظیم دسترسی‌های مانیفست
+    # ۲. حذف کی‌استور قدیمی و ساخت کی‌استور جدید با پسوورد یکسان
+    - name: Force Recreate Keystore
+      run: |
+        mkdir -p app
+        rm -f app/my-release-key.jks my-release-key.jks
+        keytool -genkeypair -v \
+          -keystore app/my-release-key.jks \
+          -alias my-alias \
+          -keyalg RSA \
+          -keysize 2048 \
+          -validity 10000 \
+          -storepass android \
+          -keypass android \
+          -dname "CN=OmniSaver, OU=Development, O=OmniSaver, L=City, S=State, C=US"
+        
+        cp app/my-release-key.jks my-release-key.jks || true
+
+    # ۳. تنظیم دسترسی‌های مانیفست
     - name: Fix Manifest XML
       run: |
         mkdir -p app/src/main
@@ -62,7 +79,7 @@ jobs:
         </manifest>
         EOF
 
-    # ۳. تزریق آیکون اختصاصی برنامه
+    # ۴. تزریق آیکون اختصاصی برنامه
     - name: Inject App Icon
       run: |
         mkdir -p app/src/main/res/drawable
@@ -78,8 +95,8 @@ jobs:
         </vector>
         EOF
 
-    # ۴. کد کامل مرورگر + راهنمای متنی کاربران + شناساگر هوشمند ویدیو
-    - name: Inject Complete Code with User Guide
+    # ۵. کد کامل مرورگر + شناساگر ویدیو + راهنما (با رفع اخطار Deprecated)
+    - name: Inject Complete Code
       run: |
         mkdir -p app/src/main/java/com/example/omnisaver
         cat << 'EOF' > app/src/main/java/com/example/omnisaver/MainActivity.kt
@@ -139,7 +156,6 @@ jobs:
                             .background(Color(0xFF0D1B2A))
                             .padding(8.dp)
                     ) {
-                        // کادر جستجو
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically
@@ -151,8 +167,9 @@ jobs:
                                 placeholder = { Text("آدرس سایت را وارد کنید...") },
                                 singleLine = true,
                                 shape = RoundedCornerShape(12.dp),
-                                colors = TextFieldDefaults.outlinedTextFieldColors(
-                                    containerColor = Color.White
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedContainerColor = Color.White,
+                                    unfocusedContainerColor = Color.White
                                 )
                             )
                             Spacer(modifier = Modifier.width(8.dp))
@@ -169,7 +186,6 @@ jobs:
 
                         Spacer(modifier = Modifier.height(6.dp))
 
-                        // باکس راهنما برای کاربر
                         Surface(
                             color = Color(0xFF1E293B),
                             shape = RoundedCornerShape(8.dp),
@@ -255,25 +271,24 @@ jobs:
         }
         EOF
 
-    # ۵. ساخت کی‌استور
-    - name: Generate Release Keystore
+    # ۶. تنظیم پسوورد و Alias در gradle برای هماهنگی کامل
+    - name: Override Keystore Credentials in Gradle
       run: |
-        mkdir -p app
-        keytool -genkeypair -v \
-          -keystore app/my-release-key.jks \
-          -alias my-alias \
-          -keyalg RSA \
-          -keysize 2048 \
-          -validity 10000 \
-          -storepass android \
-          -keypass android \
-          -dname "CN=OmniSaver, OU=Development, O=OmniSaver, L=City, S=State, C=US"
+        if [ -f "app/build.gradle.kts" ]; then
+          sed -i 's/storePassword = .*/storePassword = "android"/g' app/build.gradle.kts || true
+          sed -i 's/keyPassword = .*/keyPassword = "android"/g' app/build.gradle.kts || true
+          sed -i 's/keyAlias = .*/keyAlias = "my-alias"/g' app/build.gradle.kts || true
+        elif [ -f "app/build.gradle" ]; then
+          sed -i 's/storePassword .*/storePassword "android"/g' app/build.gradle || true
+          sed -i 's/keyPassword .*/keyPassword "android"/g' app/build.gradle || true
+          sed -i 's/keyAlias .*/keyAlias "my-alias"/g' app/build.gradle || true
+        fi
 
-    # ۶. کامپایل نسخه نهایی
+    # ۷. کامپایل نهایی پروژه
     - name: Build Release APK
       run: gradle assembleRelease --no-daemon
 
-    # ۷. آپلود فایل APK
+    # ۸. آپلود فایل APK
     - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
