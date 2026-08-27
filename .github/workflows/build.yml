@@ -30,7 +30,232 @@ jobs:
         mkdir -p ~/.gradle
         echo "org.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m" >> ~/.gradle/gradle.properties
 
-    # ۲. ساخت دقیق کی‌استور با نام Alias دقیق مورد انتظار پروژه (my-alias)
+    # ۲. تنظیم دسترسی‌های مانیفست
+    - name: Fix Manifest XML
+      run: |
+        mkdir -p app/src/main
+        cat << 'EOF' > app/src/main/AndroidManifest.xml
+        <?xml version="1.0" encoding="utf-8"?>
+        <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+            <uses-permission android:name="android.permission.INTERNET" />
+            <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+            <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
+            <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+
+            <application
+                android:allowBackup="true"
+                android:label="OmniSaver"
+                android:icon="@drawable/ic_launcher_foreground"
+                android:supportsRtl="true"
+                android:usesCleartextTraffic="true"
+                android:theme="@android:style/Theme.Material.Light.NoActionBar">
+                <activity
+                    android:name=".MainActivity"
+                    android:configChanges="orientation|screenSize"
+                    android:exported="true">
+                    <intent-filter>
+                        <action android:name="android.intent.action.MAIN" />
+                        <category android:name="android.intent.category.LAUNCHER" />
+                    </intent-filter>
+                </activity>
+            </application>
+        </manifest>
+        EOF
+
+    # ۳. تزریق آیکون اختصاصی برنامه
+    - name: Inject App Icon
+      run: |
+        mkdir -p app/src/main/res/drawable
+        cat << 'EOF' > app/src/main/res/drawable/ic_launcher_foreground.xml
+        <vector xmlns:android="http://schemas.android.com/apk/res/android"
+            android:width="108dp"
+            android:height="108dp"
+            android:viewportWidth="108"
+            android:viewportHeight="108">
+            <path android:fillColor="#0D1B2A" android:pathData="M0,0h108v108h-108z"/>
+            <path android:fillColor="#1E88E5" android:pathData="M54,20 A34,34 0 1,0 88,54 A34,34 0 0,0 54,20 Z" />
+            <path android:fillColor="#00E676" android:pathData="M44,40 L64,40 L64,56 L72,56 L54,76 L36,56 L44,56 Z" />
+        </vector>
+        EOF
+
+    # ۴. کد کامل مرورگر + راهنمای متنی کاربران + شناساگر هوشمند ویدیو
+    - name: Inject Complete Code with User Guide
+      run: |
+        mkdir -p app/src/main/java/com/example/omnisaver
+        cat << 'EOF' > app/src/main/java/com/example/omnisaver/MainActivity.kt
+        package com.example.omnisaver
+
+        import android.app.DownloadManager
+        import android.content.Context
+        import android.net.Uri
+        import android.os.Bundle
+        import android.os.Environment
+        import android.webkit.WebResourceRequest
+        import android.webkit.WebResourceResponse
+        import android.webkit.WebView
+        import android.webkit.WebViewClient
+        import android.widget.Toast
+        import androidx.activity.ComponentActivity
+        import androidx.activity.compose.setContent
+        import androidx.compose.foundation.background
+        import androidx.compose.foundation.layout.*
+        import androidx.compose.foundation.shape.CircleShape
+        import androidx.compose.foundation.shape.RoundedCornerShape
+        import androidx.compose.material3.*
+        import androidx.compose.runtime.*
+        import androidx.compose.ui.Alignment
+        import androidx.compose.ui.Modifier
+        import androidx.compose.ui.graphics.Color
+        import androidx.compose.ui.platform.LocalContext
+        import androidx.compose.ui.text.font.FontWeight
+        import androidx.compose.ui.text.style.TextAlign
+        import androidx.compose.ui.unit.dp
+        import androidx.compose.ui.unit.sp
+        import androidx.compose.ui.viewinterop.AndroidView
+
+        class MainActivity : ComponentActivity() {
+            override fun onCreate(savedInstanceState: Bundle?) {
+                super.onCreate(savedInstanceState)
+                setContent {
+                    BrowserScreen()
+                }
+            }
+        }
+
+        @OptIn(ExperimentalMaterial3Api::class)
+        @Composable
+        fun BrowserScreen() {
+            val context = LocalContext.current
+            var urlInput by remember { mutableStateOf("https://www.google.com") }
+            var webView: WebView? by remember { mutableStateOf(null) }
+            var detectedVideoUrl by remember { mutableStateOf<String?>(null) }
+            var isEyeActive by remember { mutableStateOf(false) }
+
+            Scaffold(
+                topBar = {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Color(0xFF0D1B2A))
+                            .padding(8.dp)
+                    ) {
+                        // کادر جستجو
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            OutlinedTextField(
+                                value = urlInput,
+                                onValueChange = { urlInput = it },
+                                modifier = Modifier.weight(1f),
+                                placeholder = { Text("آدرس سایت را وارد کنید...") },
+                                singleLine = true,
+                                shape = RoundedCornerShape(12.dp),
+                                colors = TextFieldDefaults.outlinedTextFieldColors(
+                                    containerColor = Color.White
+                                )
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Button(
+                                onClick = {
+                                    val target = if (!urlInput.startsWith("http")) "https://$urlInput" else urlInput
+                                    webView?.loadUrl(target)
+                                },
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Text("برو")
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(6.dp))
+
+                        // باکس راهنما برای کاربر
+                        Surface(
+                            color = Color(0xFF1E293B),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = "راهنما: ۱. سایت دلخواه را باز کنید  ۲. ویدیو را پخش کنید  ۳. دکمه چشم سبز (👁) را برای دانلود بزنید.",
+                                color = Color(0xFFE2E8F0),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Medium,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.padding(vertical = 4.dp, horizontal = 8.dp)
+                            )
+                        }
+                    }
+                },
+                floatingActionButton = {
+                    FloatingActionButton(
+                        onClick = {
+                            if (isEyeActive && detectedVideoUrl != null) {
+                                startDownload(context, detectedVideoUrl!!)
+                            } else {
+                                Toast.makeText(context, "ابتدا ویدیو را در سایت پخش کنید تا دکمه روشن شود", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        containerColor = if (isEyeActive) Color(0xFF00E676) else Color(0xFF64748B),
+                        contentColor = Color.White,
+                        shape = CircleShape
+                    ) {
+                        Text(
+                            text = if (isEyeActive) "👁 (دانلود)" else "👁",
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            ) { padding ->
+                AndroidView(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(padding),
+                    factory = { ctx ->
+                        WebView(ctx).apply {
+                            settings.javaScriptEnabled = true
+                            settings.domStorageEnabled = true
+                            settings.mediaPlaybackRequiresUserGesture = false
+                            
+                            webViewClient = object : WebViewClient() {
+                                override fun shouldInterceptRequest(
+                                    view: WebView?,
+                                    request: WebResourceRequest?
+                                ): WebResourceResponse? {
+                                    val reqUrl = request?.url?.toString() ?: ""
+                                    if (reqUrl.contains(".mp4") || reqUrl.contains(".m3u8") || reqUrl.contains("video")) {
+                                        detectedVideoUrl = reqUrl
+                                        isEyeActive = true
+                                    }
+                                    return super.shouldInterceptRequest(view, request)
+                                }
+                            }
+                            loadUrl("https://www.google.com")
+                            webView = this
+                        }
+                    }
+                )
+            }
+        }
+
+        fun startDownload(context: Context, videoUrl: String) {
+            try {
+                val request = DownloadManager.Request(Uri.parse(videoUrl)).apply {
+                    setTitle("ویدیوی OmniSaver")
+                    setDescription("در حال دانلود ویدیو...")
+                    setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                    setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, "OmniSaver_${System.currentTimeMillis()}.mp4")
+                }
+                val manager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+                manager.enqueue(request)
+                Toast.makeText(context, "دانلود آغاز شد! نوار اعلانات را بررسی کنید.", Toast.LENGTH_LONG).show()
+            } catch (e: Exception) {
+                Toast.makeText(context, "خطا در دانلود: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+        EOF
+
+    # ۵. ساخت کی‌استور
     - name: Generate Release Keystore
       run: |
         mkdir -p app
@@ -43,85 +268,12 @@ jobs:
           -storepass android \
           -keypass android \
           -dname "CN=OmniSaver, OU=Development, O=OmniSaver, L=City, S=State, C=US"
-        
-        cp app/my-release-key.jks my-release-key.jks || true
 
-    # ۳. تزریق کتابخانه آیکون‌های متریال
-    - name: Add Material Icons Dependency
-      run: |
-        if [ -f "app/build.gradle.kts" ]; then
-          echo 'dependencies { implementation("androidx.compose.material:material-icons-extended:1.6.0") }' >> app/build.gradle.kts
-        elif [ -f "app/build.gradle" ]; then
-          echo 'dependencies { implementation "androidx.compose.material:material-icons-extended:1.6.0" }' >> app/build.gradle
-        fi
-
-    # ۴. تنظیم دقیق پسوورد و آلیس در کانفیگ پروژه
-    - name: Override Keystore Credentials
-      run: |
-        if [ -f "app/build.gradle.kts" ]; then
-          sed -i 's/storePassword = .*/storePassword = "android"/g' app/build.gradle.kts || true
-          sed -i 's/keyPassword = .*/keyPassword = "android"/g' app/build.gradle.kts || true
-          sed -i 's/keyAlias = .*/keyAlias = "my-alias"/g' app/build.gradle.kts || true
-        elif [ -f "app/build.gradle" ]; then
-          sed -i 's/storePassword .*/storePassword "android"/g' app/build.gradle || true
-          sed -i 's/keyPassword .*/keyPassword "android"/g' app/build.gradle || true
-          sed -i 's/keyAlias .*/keyAlias "my-alias"/g' app/build.gradle || true
-        fi
-
-    # ۵. تزریق آیکون اختصاصی
-    - name: Inject Modern App Icon
-      run: |
-        mkdir -p app/src/main/res/drawable
-        cat << 'EOF' > app/src/main/res/drawable/ic_launcher_foreground.xml
-        <vector xmlns:android="http://schemas.android.com/apk/res/android"
-            android:width="108dp"
-            android:height="108dp"
-            android:viewportWidth="108"
-            android:viewportHeight="108">
-            <path
-                android:fillColor="#0D1B2A"
-                android:pathData="M0,0h108v108h-108z"/>
-            <path
-                android:fillColor="#1E88E5"
-                android:pathData="M54,20 A34,34 0 1,0 88,54 A34,34 0 0,0 54,20 Z" />
-            <path
-                android:fillColor="#00E676"
-                android:pathData="M44,40 L64,40 L64,56 L72,56 L54,76 L36,56 L44,56 Z" />
-        </vector>
-        EOF
-
-    # ۶. تنظیم مانیفست
-    - name: Fix Manifest XML
-      run: |
-        mkdir -p app/src/main
-        cat << 'EOF' > app/src/main/AndroidManifest.xml
-        <?xml version="1.0" encoding="utf-8"?>
-        <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-            <uses-permission android:name="android.permission.INTERNET" />
-            <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-            <application
-                android:allowBackup="true"
-                android:label="OmniSaver"
-                android:icon="@drawable/ic_launcher_foreground"
-                android:supportsRtl="true"
-                android:theme="@android:style/Theme.Material.Light">
-                <activity
-                    android:name=".MainActivity"
-                    android:exported="true">
-                    <intent-filter>
-                        <action android:name="android.intent.action.MAIN" />
-                        <category android:name="android.intent.category.LAUNCHER" />
-                    </intent-filter>
-                </activity>
-            </application>
-        </manifest>
-        EOF
-
-    # ۷. ساخت APK
+    # ۶. کامپایل نسخه نهایی
     - name: Build Release APK
       run: gradle assembleRelease --no-daemon
 
-    # ۸. دانلود خروجی
+    # ۷. آپلود فایل APK
     - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
