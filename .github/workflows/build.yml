@@ -22,28 +22,12 @@ jobs:
     - name: Setup Gradle
       uses: gradle/actions/setup-gradle@v3
 
-    # جایگزینی مستقیم و اجباری فایل مانیفست سالم
-    - name: Overwrite Manifest
+    # حذف مانیفست خراب قبلی و تزریق نسخه استاندارد در لحظه بیلد
+    - name: Force Fix AndroidManifest
       run: |
-        echo '<?xml version="1.0" encoding="utf-8"?>' > app/src/main/AndroidManifest.xml
-        echo '<manifest xmlns:android="http://schemas.android.com/apk/android">' >> app/src/main/AndroidManifest.xml
-        echo '    <uses-permission android:name="android.permission.INTERNET" />' >> app/src/main/AndroidManifest.xml
-        echo '    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />' >> app/src/main/AndroidManifest.xml
-        echo '    <application' >> app/src/main/AndroidManifest.xml
-        echo '        android:allowBackup="true"' >> app/src/main/AndroidManifest.xml
-        echo '        android:label="OmniSaver"' >> app/src/main/AndroidManifest.xml
-        echo '        android:supportsRtl="true"' >> app/src/main/AndroidManifest.xml
-        echo '        android:theme="@style/Theme.Material3.DayNight">' >> app/src/main/AndroidManifest.xml
-        echo '        <activity' >> app/src/main/AndroidManifest.xml
-        echo '            android:name=".MainActivity"' >> app/src/main/AndroidManifest.xml
-        echo '            android:exported="true">' >> app/src/main/AndroidManifest.xml
-        echo '            <intent-filter>' >> app/src/main/AndroidManifest.xml
-        echo '                <action android:name="android.intent.action.MAIN" />' >> app/src/main/AndroidManifest.xml
-        echo '                <category android:name="android.intent.category.LAUNCHER" />' >> app/src/main/AndroidManifest.xml
-        echo '            </intent-filter>' >> app/src/main/AndroidManifest.xml
-        echo '        </activity>' >> app/src/main/AndroidManifest.xml
-        echo '    </application>' >> app/src/main/AndroidManifest.xml
-        echo '</manifest>' >> app/src/main/AndroidManifest.xml
+        rm -f app/src/main/AndroidManifest.xml
+        mkdir -p app/src/main
+        printf '<?xml version="1.0" encoding="utf-8"?>\n<manifest xmlns:android="http://schemas.android.com/apk/android">\n    <uses-permission android:name="android.permission.INTERNET" />\n    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />\n    <application\n        android:allowBackup="true"\n        android:label="OmniSaver"\n        android:supportsRtl="true"\n        android:theme="@style/Theme.Material3.DayNight">\n        <activity\n            android:name=".MainActivity"\n            android:exported="true">\n            <intent-filter>\n                <action android:name="android.intent.action.MAIN" />\n                <category android:name="android.intent.category.LAUNCHER" />\n            </intent-filter>\n        </activity>\n    </application>\n</manifest>' > app/src/main/AndroidManifest.xml
 
     - name: Generate Release Keystore
       run: |
