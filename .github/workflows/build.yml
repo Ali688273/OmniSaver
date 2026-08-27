@@ -36,6 +36,29 @@ jobs:
           -keypass 123456 \
           -dname "CN=OmniSaver, OU=Development, O=OmniSaver, L=City, S=State, C=US"
 
+    # ۱. تزریق مستقیم آیکون مدرن و اختصاصی برنامه به فایل‌های Drawable
+    - name: Inject Modern App Icon
+      run: |
+        mkdir -p app/src/main/res/drawable
+        cat << 'EOF' > app/src/main/res/drawable/ic_launcher_foreground.xml
+        <vector xmlns:android="http://schemas.android.com/apk/res/android"
+            android:width="108dp"
+            android:height="108dp"
+            android:viewportWidth="108"
+            android:viewportHeight="108">
+            <path
+                android:fillColor="#0D1B2A"
+                android:pathData="M0,0h108v108h-108z"/>
+            <path
+                android:fillColor="#1E88E5"
+                android:pathData="M54,20 A34,34 0 1,0 88,54 A34,34 0 0,0 54,20 Z" />
+            <path
+                android:fillColor="#00E676"
+                android:pathData="M44,40 L64,40 L64,56 L72,56 L54,76 L36,56 L44,56 Z" />
+        </vector>
+        EOF
+
+    # ۲. اصلاح مانیفست و اتصال آیکون جدید
     - name: Fix Manifest XML
       run: |
         mkdir -p app/src/main
@@ -47,6 +70,7 @@ jobs:
             <application
                 android:allowBackup="true"
                 android:label="OmniSaver"
+                android:icon="@drawable/ic_launcher_foreground"
                 android:supportsRtl="true"
                 android:theme="@android:style/Theme.Material.Light">
                 <activity
@@ -61,14 +85,16 @@ jobs:
         </manifest>
         EOF
 
-    # چاپ دقیق خطوط ۱۰۰ تا ۱۸۰ فایل MainActivity جهت ریشه‌یابی قطعی کاتلین
-    - name: Read MainActivity Lines
+    # ۳. رفع خطای آیکون دانلود کاتلین
+    - name: Fix Missing Download Icon
       run: |
-        find app/src/main/java -name "MainActivity.kt" -exec sed -n '100,180p' {} \;
+        find app/src/main/java -name "MainActivity.kt" -exec sed -i 's/Icons\.Default\.Download/Icons.Default.ArrowDownward/g' {} \;
 
+    # ۴. کامپایل پروژه
     - name: Build Release APK
       run: gradle assembleRelease --no-daemon
 
+    # ۵. آپلود خروجی
     - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
