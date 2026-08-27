@@ -22,7 +22,7 @@ jobs:
     - name: Setup Gradle
       uses: gradle/actions/setup-gradle@v3
 
-    # ساخت فایل کلید امضا دقیقاً داخل پوشه app
+    # ساخت فایل کی‌استور پیش از امضا
     - name: Generate Release Keystore
       run: |
         keytool -genkeypair -v -keystore app/my-release-key.jks -keyalg RSA -keysize 2048 -validity 10000 -alias my-alias -storepass mypassword -keypass mypassword -dname "CN=OmniSaver, OU=App, O=Dev, L=City, S=State, C=IR"
