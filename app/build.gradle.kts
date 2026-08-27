@@ -51,7 +51,6 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
     implementation("androidx.activity:activity-compose:1.8.2")
     
-    // وابستگی‌های تک‌به‌تک Compose جهت جلوگیری از خطای BOM
     implementation("androidx.compose.ui:ui:1.6.2")
     implementation("androidx.compose.ui:ui-graphics:1.6.2")
     implementation("androidx.compose.ui:ui-tooling-preview:1.6.2")
