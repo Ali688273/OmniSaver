@@ -1,4 +1,4 @@
-name: Build Android APK
+name: Build Release APK
 
 on:
   push:
@@ -22,11 +22,27 @@ jobs:
     - name: Setup Gradle
       uses: gradle/actions/setup-gradle@v3
 
-    - name: Build Debug APK with Gradle
-      run: gradle assembleDebug
+    # ساخت خودکار کلید امضا برای بازار و مایکت
+    - name: Generate Release Keystore
+      run: |
+        keytool -genkeypair -v -keystore my-release-key.jks -keyalg RSA -keysize 2048 -validity 10000 -alias my-alias -storepass mypassword -keypass mypassword -dname "CN=OmniSaver, OU=App, O=Dev, L=City, S=State, C=IR"
 
-    - name: Upload APK Artifact
+    - name: Build Release APK
+      run: gradle assembleRelease
+
+    # امضا کردن خروجی
+    - name: Sign APK
+      uses: rsoftware/sign-android-apk@v1
+      with:
+        releaseDirectory: app/build/outputs/apk/release
+        signingKeyBase64: ${{ secrets.SIGNING_KEY }}
+        alias: my-alias
+        keyStorePassword: mypassword
+        keyPassword: mypassword
+      continue-on-error: true
+
+    - name: Upload Signed APK
       uses: actions/upload-artifact@v4
       with:
-        name: OmniSaver-APK
-        path: app/build/outputs/apk/debug/app-debug.apk
+        name: OmniSaver-Release-Signed
+        path: app/build/outputs/apk/release/*.apk
