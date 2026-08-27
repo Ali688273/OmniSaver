@@ -22,13 +22,6 @@ jobs:
     - name: Setup Gradle
       uses: gradle/actions/setup-gradle@v3
 
-    # حذف مانیفست خراب قبلی و تزریق نسخه استاندارد در لحظه بیلد
-    - name: Force Fix AndroidManifest
-      run: |
-        rm -f app/src/main/AndroidManifest.xml
-        mkdir -p app/src/main
-        printf '<?xml version="1.0" encoding="utf-8"?>\n<manifest xmlns:android="http://schemas.android.com/apk/android">\n    <uses-permission android:name="android.permission.INTERNET" />\n    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />\n    <application\n        android:allowBackup="true"\n        android:label="OmniSaver"\n        android:supportsRtl="true"\n        android:theme="@style/Theme.Material3.DayNight">\n        <activity\n            android:name=".MainActivity"\n            android:exported="true">\n            <intent-filter>\n                <action android:name="android.intent.action.MAIN" />\n                <category android:name="android.intent.category.LAUNCHER" />\n            </intent-filter>\n        </activity>\n    </application>\n</manifest>' > app/src/main/AndroidManifest.xml
-
     - name: Generate Release Keystore
       run: |
         keytool -genkeypair -v -keystore app/my-release-key.jks -keyalg RSA -keysize 2048 -validity 10000 -alias my-alias -storepass mypassword -keypass mypassword -dname "CN=OmniSaver, OU=App, O=Dev, L=City, S=State, C=IR"
