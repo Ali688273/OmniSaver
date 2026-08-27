@@ -19,10 +19,7 @@ jobs:
         java-version: '17'
         distribution: 'temurin'
 
-    - name: Setup Gradle
-      uses: gradle/actions/setup-gradle@v3
-
-    # ۱. ساخت خودکار فایل کی‌استور امضا روی سرور
+    # ۱. ساخت فایل کی‌استور امضا
     - name: Generate Release Keystore
       run: |
         keytool -genkeypair -v \
@@ -35,7 +32,7 @@ jobs:
           -keypass 123456 \
           -dname "CN=OmniSaver, OU=Development, O=OmniSaver, L=City, S=State, C=US"
 
-    # ۲. ثبت مانیفست کاملاً سالم
+    # ۲. ثبت مانیفست استاندارد
     - name: Fix Manifest XML
       run: |
         mkdir -p app/src/main
@@ -64,11 +61,13 @@ jobs:
         </manifest>
         EOF
 
-    # ۳. کامپایل و ساخت خروجی Release
+    # ۳. اجباری کردن اجرای بیلد با Wrapper اختصاصی پروژه
     - name: Build Release APK
-      run: gradle assembleRelease
+      run: |
+        chmod +x gradlew
+        ./gradlew assembleRelease --no-daemon
 
-    # ۴. آپلود فایل APK ساخته‌شده
+    # ۴. آپلود فایل APK
     - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
