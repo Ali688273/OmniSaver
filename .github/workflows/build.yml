@@ -30,7 +30,7 @@ jobs:
         mkdir -p ~/.gradle
         echo "org.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m" >> ~/.gradle/gradle.properties
 
-    # ۲. ساخت کی‌استور اختصاصی برای بازار و مایکت
+    # ۲. ساخت کی‌استور اختصاصی
     - name: Generate Keystore for Store
       run: |
         mkdir -p app
@@ -47,7 +47,7 @@ jobs:
         
         cp app/my-release-key.jks my-release-key.jks || true
 
-    # ۳. تنظیم مجوزهای مانیفست
+    # ۳. تنظیم دسترسی‌های مانیفست
     - name: Fix Manifest XML
       run: |
         mkdir -p app/src/main
@@ -95,8 +95,8 @@ jobs:
         </vector>
         EOF
 
-    # ۵. تزریق کد کاتلین همراه با سیستم چندتبی (Multi-Tab) و +
-    - name: Inject Multi-Tab Code
+    # ۵. تزریق کد کامل فیلتر ویدیو و دانلود کیفیت اصلی
+    - name: Inject Smart Video Extractor Code
       run: |
         mkdir -p app/src/main/java/com/example/omnisaver
         cat << 'EOF' > app/src/main/java/com/example/omnisaver/MainActivity.kt
@@ -156,8 +156,6 @@ jobs:
         @Composable
         fun MainApp() {
             var currentBottomTab by rememberSaveable { mutableStateOf(0) }
-            
-            // مدیریت لیست تب‌های مرورگر
             val tabs = remember { mutableStateListOf(TabItem(id = 1)) }
             var activeTabId by remember { mutableStateOf(1) }
             var nextTabId by remember { mutableStateOf(2) }
@@ -215,7 +213,6 @@ jobs:
                                         activeTabId = tabs.getOrNull(index.coerceAtMost(tabs.size - 1))?.id ?: tabs.first().id
                                     }
                                 } else {
-                                    // اگر فقط یک تب باشد و بسته شود، پاکسازی شده و به گوگل برمی‌گردد
                                     tabs[0].url = "https://www.google.com"
                                     tabs[0].title = "صفحه جدید"
                                     tabs[0].webView?.loadUrl("https://www.google.com")
@@ -244,46 +241,6 @@ jobs:
             var urlInput by remember(activeTabId) { mutableStateOf(activeTab.url) }
             var detectedVideoUrl by remember { mutableStateOf<String?>(null) }
             var isEyeActive by remember { mutableStateOf(false) }
-            var showQualityDialog by remember { mutableStateOf(false) }
-
-            if (showQualityDialog) {
-                AlertDialog(
-                    onDismissRequest = { showQualityDialog = false },
-                    title = { Text("انتخاب کیفیت دانلود") },
-                    text = {
-                        Column {
-                            Text("لطفاً کیفیت مورد نظر برای ذخیره ویدیو را انتخاب کنید:")
-                            Spacer(modifier = Modifier.height(12.dp))
-                            Button(
-                                onClick = {
-                                    startDownload(context, detectedVideoUrl!!, "1080p")
-                                    showQualityDialog = false
-                                },
-                                modifier = Modifier.fillMaxWidth()
-                            ) { Text("کیفیت عالی (1080p Full HD)") }
-                            
-                            Spacer(modifier = Modifier.height(6.dp))
-                            Button(
-                                onClick = {
-                                    startDownload(context, detectedVideoUrl!!, "720p")
-                                    showQualityDialog = false
-                                },
-                                modifier = Modifier.fillMaxWidth()
-                            ) { Text("کیفیت خوب (720p HD)") }
-
-                            Spacer(modifier = Modifier.height(6.dp))
-                            Button(
-                                onClick = {
-                                    startDownload(context, detectedVideoUrl!!, "480p")
-                                    showQualityDialog = false
-                                },
-                                modifier = Modifier.fillMaxWidth()
-                            ) { Text("کیفیت معمولی (480p SD)") }
-                        }
-                    },
-                    confirmButton = {}
-                )
-            }
 
             Scaffold(
                 topBar = {
@@ -292,7 +249,6 @@ jobs:
                             .fillMaxWidth()
                             .background(Color(0xFF0F172A))
                     ) {
-                        // ۱. نوار تب‌ها و دکمه +
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -341,7 +297,6 @@ jobs:
                                 }
                             }
 
-                            // دکمه افزودن تب جدید (+)
                             IconButton(
                                 onClick = onNewTab,
                                 modifier = Modifier.size(36.dp)
@@ -350,7 +305,6 @@ jobs:
                             }
                         }
 
-                        // ۲. نوار ورودی URL
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -387,9 +341,10 @@ jobs:
                     FloatingActionButton(
                         onClick = {
                             if (isEyeActive && detectedVideoUrl != null) {
-                                showQualityDialog = true
+                                // دانلود مستقیم کیفیت اصلی ویدیو بدون گیر دادن به فایلهای متنی
+                                startDownload(context, detectedVideoUrl!!)
                             } else {
-                                Toast.makeText(context, "ابتدا ویدیو را در سایت پخش کنید تا دکمه فعال شود", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, "ویدیو را پخش کنید تا دکمه دانلود روشن شود", Toast.LENGTH_SHORT).show()
                             }
                         },
                         containerColor = if (isEyeActive) Color(0xFF10B981) else Color(0xFF64748B),
@@ -421,10 +376,19 @@ jobs:
                                                 view: WebView?,
                                                 request: WebResourceRequest?
                                             ): WebResourceResponse? {
-                                                val reqUrl = request?.url?.toString() ?: ""
-                                                if (reqUrl.contains(".mp4") || reqUrl.contains(".m3u8") || reqUrl.contains("video")) {
+                                                val reqUrl = request?.url?.toString()?.lowercase() ?: ""
+                                                
+                                                // تشخیص واقعی ویدیوها و فیلتر کردن کدهای آمارگیری متنی
+                                                val isRealVideo = (reqUrl.endsWith(".mp4") || 
+                                                                  reqUrl.endsWith(".m3u8") || 
+                                                                  reqUrl.endsWith(".webm") || 
+                                                                  reqUrl.endsWith(".mov") || 
+                                                                  reqUrl.endsWith(".mkv") || 
+                                                                  (reqUrl.contains("/video/") && !reqUrl.contains("json") && !reqUrl.contains("metrica")))
+
+                                                if (isRealVideo) {
                                                     if (isVisible) {
-                                                        detectedVideoUrl = reqUrl
+                                                        detectedVideoUrl = request?.url?.toString()
                                                         isEyeActive = true
                                                     }
                                                 }
@@ -479,9 +443,9 @@ jobs:
                     colors = CardDefaults.cardColors(containerColor = Color(0xFFF1F5F9))
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
-                        Text("مشاهده درصد پیشرفت و دانلودهای انجام شده", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        Text("مشاهده درصد پیشرفت و فایل‌ها", fontWeight = FontWeight.Bold, fontSize = 14.sp)
                         Spacer(modifier = Modifier.height(8.dp))
-                        Text("برای مشاهده وضعیت درصد دانلود آنلاین یا لغو آن، دکمه زیر را فشار دهید تا بخش دانلودهای گوشی باز شود.", fontSize = 12.sp, color = Color.Gray)
+                        Text("برای مشاهده وضعیت پیشرفت یا باز کردن فایل دانلود شده، کلیک کنید:", fontSize = 12.sp, color = Color.Gray)
 
                         Spacer(modifier = Modifier.height(12.dp))
                         Button(
@@ -490,12 +454,12 @@ jobs:
                                     val intent = Intent(DownloadManager.ACTION_VIEW_DOWNLOADS)
                                     context.startActivity(intent)
                                 } catch (e: Exception) {
-                                    Toast.makeText(context, "بخش دانلودهای سیستم باز نشد", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, "بخش دانلود سیستم باز نشد", Toast.LENGTH_SHORT).show()
                                 }
                             },
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Text("باز کردن مدیریت دانلود گوشی")
+                            Text("باز کردن پوشه دانلودهای گوشی")
                         }
                     }
                 }
@@ -515,7 +479,7 @@ jobs:
                 Text("تنظیمات مرورگر OmniSaver", fontSize = 20.sp, fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(20.dp))
 
-                Text("موتور جستجوی پیش‌فرض:", fontWeight = FontWeight.SemiBold)
+                Text("موتور جستجو:", fontWeight = FontWeight.SemiBold)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     RadioButton(selected = selectedEngine == "گوگل", onClick = { selectedEngine = "گوگل" })
                     Text("Google")
@@ -528,39 +492,39 @@ jobs:
 
                 Button(
                     onClick = {
-                        Toast.makeText(context, "حافظه کش مرورگر پاکسازی شد", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "حافظه کش پاکسازی شد", Toast.LENGTH_SHORT).show()
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444)),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("پاکسازی کش و کوکی‌ها")
+                    Text("پاکسازی کش مرورگر")
                 }
             }
         }
 
-        fun startDownload(context: Context, videoUrl: String, quality: String) {
+        fun startDownload(context: Context, videoUrl: String) {
             try {
                 val cookies = CookieManager.getInstance().getCookie(videoUrl)
                 val request = DownloadManager.Request(Uri.parse(videoUrl)).apply {
-                    setTitle("OmniSaver_$quality")
-                    setDescription("در حال دانلود ویدیو...")
+                    setTitle("OmniSaver_Video")
+                    setDescription("در حال دریافت فایل اصلی...")
                     if (!cookies.isNullOrEmpty()) {
                         addRequestHeader("Cookie", cookies)
                     }
                     addRequestHeader("User-Agent", "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36")
                     setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-                    setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, "OmniSaver_${quality}_${System.currentTimeMillis()}.mp4")
+                    setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, "OmniSaver_Video_${System.currentTimeMillis()}.mp4")
                 }
                 val manager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
                 manager.enqueue(request)
-                Toast.makeText(context, "دانلود با کیفیت $quality شروع شد! (نوار اعلانات را چک کنید)", Toast.LENGTH_LONG).show()
+                Toast.makeText(context, "دانلود ویدیوی اصلی شروع شد! (نوار اعلانات را چک کنید)", Toast.LENGTH_LONG).show()
             } catch (e: Exception) {
                 Toast.makeText(context, "خطا در شروع دانلود: ${e.message}", Toast.LENGTH_SHORT).show()
             }
         }
         EOF
 
-    # ۶. تنظیم کلید امضا در فایل Gradle
+    # ۶. تنظیم پسوورد و Alias کی‌استور
     - name: Override Keystore Credentials in Gradle
       run: |
         if [ -f "app/build.gradle.kts" ]; then
@@ -573,7 +537,7 @@ jobs:
           sed -i 's/keyAlias .*/keyAlias "omni-key-alias"/g' app/build.gradle || true
         fi
 
-    # ۷. ساخت فایل نهایی
+    # ۷. کامپایل نهایی
     - name: Build Release APK
       run: gradle assembleRelease --no-daemon
 
@@ -581,5 +545,5 @@ jobs:
     - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
-        name: OmniSaver-Release-MultiTab
+        name: OmniSaver-Release-FixedVideo
         path: '**/build/outputs/apk/release/*.apk'
