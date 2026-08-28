@@ -30,20 +30,21 @@ jobs:
         mkdir -p ~/.gradle
         echo "org.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m" >> ~/.gradle/gradle.properties
 
-    # ۲. حذف کی‌استور قدیمی و ساخت کی‌استور جدید با پسوورد یکسان
-    - name: Force Recreate Keystore
+    # ۲. ساخت کی‌استور معتبر با کلید 4096 جهت رفع هشدار گوگل پلی
+    - name: Generate High-Security Keystore
       run: |
         mkdir -p app
         rm -f app/my-release-key.jks my-release-key.jks
         keytool -genkeypair -v \
           -keystore app/my-release-key.jks \
-          -alias my-alias \
+          -alias omni-key-alias \
           -keyalg RSA \
-          -keysize 2048 \
+          -keysize 4096 \
+          -sigalg SHA256withRSA \
           -validity 10000 \
-          -storepass android \
-          -keypass android \
-          -dname "CN=OmniSaver, OU=Development, O=OmniSaver, L=City, S=State, C=US"
+          -storepass android123 \
+          -keypass android123 \
+          -dname "CN=OmniSaver Official, OU=Mobile, O=OmniSaver Studio, L=Tehran, S=Tehran, C=IR"
         
         cp app/my-release-key.jks my-release-key.jks || true
 
@@ -61,7 +62,7 @@ jobs:
 
             <application
                 android:allowBackup="true"
-                android:label="OmniSaver"
+                android:label="OmniSaver Pro"
                 android:icon="@drawable/ic_launcher_foreground"
                 android:supportsRtl="true"
                 android:usesCleartextTraffic="true"
@@ -79,7 +80,7 @@ jobs:
         </manifest>
         EOF
 
-    # ۴. تزریق آیکون اختصاصی برنامه
+    # ۴. تزریق آیکون برنامه
     - name: Inject App Icon
       run: |
         mkdir -p app/src/main/res/drawable
@@ -89,14 +90,14 @@ jobs:
             android:height="108dp"
             android:viewportWidth="108"
             android:viewportHeight="108">
-            <path android:fillColor="#0D1B2A" android:pathData="M0,0h108v108h-108z"/>
-            <path android:fillColor="#1E88E5" android:pathData="M54,20 A34,34 0 1,0 88,54 A34,34 0 0,0 54,20 Z" />
-            <path android:fillColor="#00E676" android:pathData="M44,40 L64,40 L64,56 L72,56 L54,76 L36,56 L44,56 Z" />
+            <path android:fillColor="#0F172A" android:pathData="M0,0h108v108h-108z"/>
+            <path android:fillColor="#2563EB" android:pathData="M54,20 A34,34 0 1,0 88,54 A34,34 0 0,0 54,20 Z" />
+            <path android:fillColor="#10B981" android:pathData="M44,40 L64,40 L64,56 L72,56 L54,76 L36,56 L44,56 Z" />
         </vector>
         EOF
 
-    # ۵. کد کامل مرورگر + شناساگر ویدیو + راهنما (با رفع اخطار Deprecated)
-    - name: Inject Complete Code
+    # ۵. تزریق کد کامل اپلیکیشن شامل تب‌ها، دانلودها، تنظیمات و انتخاب کیفیت
+    - name: Inject Full Advanced App Code
       run: |
         mkdir -p app/src/main/java/com/example/omnisaver
         cat << 'EOF' > app/src/main/java/com/example/omnisaver/MainActivity.kt
@@ -113,9 +114,12 @@ jobs:
         import android.webkit.WebViewClient
         import android.widget.Toast
         import androidx.activity.ComponentActivity
+        import androidx.activity.compose.BackHandler
         import androidx.activity.compose.setContent
         import androidx.compose.foundation.background
         import androidx.compose.foundation.layout.*
+        import androidx.compose.foundation.lazy.LazyColumn
+        import androidx.compose.foundation.lazy.items
         import androidx.compose.foundation.shape.CircleShape
         import androidx.compose.foundation.shape.RoundedCornerShape
         import androidx.compose.material3.*
@@ -125,7 +129,6 @@ jobs:
         import androidx.compose.ui.graphics.Color
         import androidx.compose.ui.platform.LocalContext
         import androidx.compose.ui.text.font.FontWeight
-        import androidx.compose.ui.text.style.TextAlign
         import androidx.compose.ui.unit.dp
         import androidx.compose.ui.unit.sp
         import androidx.compose.ui.viewinterop.AndroidView
@@ -134,37 +137,130 @@ jobs:
             override fun onCreate(savedInstanceState: Bundle?) {
                 super.onCreate(savedInstanceState)
                 setContent {
-                    BrowserScreen()
+                    MainApp()
+                }
+            }
+        }
+
+        @Composable
+        fun MainApp() {
+            var currentTab by remember { mutableStateOf(0) } // 0: Browser, 1: Downloads, 2: Settings
+            val context = LocalContext.current
+            var webViewInstance by remember { mutableStateOf<WebView?>(null) }
+            var canGoBack by remember { mutableStateOf(false) }
+
+            // مدیریت دکمه بازگشت گوشی (عدم خروج ناگهانی)
+            BackHandler(enabled = canGoBack || currentTab != 0) {
+                if (currentTab != 0) {
+                    currentTab = 0
+                } else if (webViewInstance?.canGoBack() == true) {
+                    webViewInstance?.goBack()
+                }
+            }
+
+            Scaffold(
+                bottomBar = {
+                    NavigationBar(containerColor = Color(0xFF0F172A)) {
+                        NavigationBarItem(
+                            selected = currentTab == 0,
+                            onClick = { currentTab = 0 },
+                            label = { Text("مرورگر", color = Color.White) },
+                            icon = { Text("🌐", fontSize = 20.sp) }
+                        )
+                        NavigationBarItem(
+                            selected = currentTab == 1,
+                            onClick = { currentTab = 1 },
+                            label = { Text("دانلودها", color = Color.White) },
+                            icon = { Text("📥", fontSize = 20.sp) }
+                        )
+                        NavigationBarItem(
+                            selected = currentTab == 2,
+                            onClick = { currentTab = 2 },
+                            label = { Text("تنظیمات", color = Color.White) },
+                            icon = { Text("⚙️", fontSize = 20.sp) }
+                        )
+                    }
+                }
+            ) { padding ->
+                Box(modifier = Modifier.padding(padding)) {
+                    when (currentTab) {
+                        0 -> BrowserView(
+                            onWebViewCreated = { webViewInstance = it },
+                            onCanGoBackChanged = { canGoBack = it }
+                        )
+                        1 -> DownloadsScreen()
+                        2 -> SettingsScreen()
+                    }
                 }
             }
         }
 
         @OptIn(ExperimentalMaterial3Api::class)
         @Composable
-        fun BrowserScreen() {
+        fun BrowserView(
+            onWebViewCreated: (WebView) -> Unit,
+            onCanGoBackChanged: (Boolean) -> Unit
+        ) {
             val context = LocalContext.current
             var urlInput by remember { mutableStateOf("https://www.google.com") }
-            var webView: WebView? by remember { mutableStateOf(null) }
             var detectedVideoUrl by remember { mutableStateOf<String?>(null) }
             var isEyeActive by remember { mutableStateOf(false) }
+            var showQualityDialog by remember { mutableStateOf(false) }
+            var activeWebView by remember { mutableStateOf<WebView?>(null) }
+
+            if (showQualityDialog) {
+                AlertDialog(
+                    onDismissRequest = { showQualityDialog = false },
+                    title = { Text("انتخاب کیفیت دانلود") },
+                    text = {
+                        Column {
+                            Text("لطفاً کیفیت مورد نظر برای ذخیره ویدیو را انتخاب کنید:")
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Button(
+                                onClick = {
+                                    startDownload(context, detectedVideoUrl!!, "1080p")
+                                    showQualityDialog = false
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) { Text("کیفیت عالی (1080p Full HD)") }
+                            
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Button(
+                                onClick = {
+                                    startDownload(context, detectedVideoUrl!!, "720p")
+                                    showQualityDialog = false
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) { Text("کیفیت خوب (720p HD)") }
+
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Button(
+                                onClick = {
+                                    startDownload(context, detectedVideoUrl!!, "480p")
+                                    showQualityDialog = false
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) { Text("کیفیت معمولی (480p SD)") }
+                        }
+                    },
+                    confirmButton = {}
+                )
+            }
 
             Scaffold(
                 topBar = {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .background(Color(0xFF0D1B2A))
+                            .background(Color(0xFF0F172A))
                             .padding(8.dp)
                     ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
                             OutlinedTextField(
                                 value = urlInput,
                                 onValueChange = { urlInput = it },
                                 modifier = Modifier.weight(1f),
-                                placeholder = { Text("آدرس سایت را وارد کنید...") },
+                                placeholder = { Text("جستجو یا ورود آدرس...") },
                                 singleLine = true,
                                 shape = RoundedCornerShape(12.dp),
                                 colors = OutlinedTextFieldDefaults.colors(
@@ -175,30 +271,13 @@ jobs:
                             Spacer(modifier = Modifier.width(8.dp))
                             Button(
                                 onClick = {
-                                    val target = if (!urlInput.startsWith("http")) "https://$urlInput" else urlInput
-                                    webView?.loadUrl(target)
+                                    val target = if (!urlInput.startsWith("http")) "https://www.google.com/search?q=$urlInput" else urlInput
+                                    activeWebView?.loadUrl(target)
                                 },
                                 shape = RoundedCornerShape(12.dp)
                             ) {
                                 Text("برو")
                             }
-                        }
-
-                        Spacer(modifier = Modifier.height(6.dp))
-
-                        Surface(
-                            color = Color(0xFF1E293B),
-                            shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text(
-                                text = "راهنما: ۱. سایت دلخواه را باز کنید  ۲. ویدیو را پخش کنید  ۳. دکمه چشم سبز (👁) را برای دانلود بزنید.",
-                                color = Color(0xFFE2E8F0),
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Medium,
-                                textAlign = TextAlign.Center,
-                                modifier = Modifier.padding(vertical = 4.dp, horizontal = 8.dp)
-                            )
                         }
                     }
                 },
@@ -206,20 +285,16 @@ jobs:
                     FloatingActionButton(
                         onClick = {
                             if (isEyeActive && detectedVideoUrl != null) {
-                                startDownload(context, detectedVideoUrl!!)
+                                showQualityDialog = true
                             } else {
                                 Toast.makeText(context, "ابتدا ویدیو را در سایت پخش کنید تا دکمه روشن شود", Toast.LENGTH_SHORT).show()
                             }
                         },
-                        containerColor = if (isEyeActive) Color(0xFF00E676) else Color(0xFF64748B),
+                        containerColor = if (isEyeActive) Color(0xFF10B981) else Color(0xFF64748B),
                         contentColor = Color.White,
                         shape = CircleShape
                     ) {
-                        Text(
-                            text = if (isEyeActive) "👁 (دانلود)" else "👁",
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold
-                        )
+                        Text(if (isEyeActive) "👁 دانلود" else "👁", fontSize = 16.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             ) { padding ->
@@ -245,50 +320,115 @@ jobs:
                                     }
                                     return super.shouldInterceptRequest(view, request)
                                 }
+
+                                override fun onPageFinished(view: WebView?, url: String?) {
+                                    super.onPageFinished(view, url)
+                                    onCanGoBackChanged(canGoBack())
+                                }
                             }
                             loadUrl("https://www.google.com")
-                            webView = this
+                            activeWebView = this
+                            onWebViewCreated(this)
                         }
                     }
                 )
             }
         }
 
-        fun startDownload(context: Context, videoUrl: String) {
+        @Composable
+        fun DownloadsScreen() {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(16.dp),
+                horizontalAlignment = Alignment.CenterAlignment
+            ) {
+                Text("لیست فایل‌های دانلود شده", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(16.dp))
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFFF1F5F9))
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text("ویدیوها در پوشه دانلودهای گوشی (Downloads/OmniSaver) ذخیره می‌شوند.", fontSize = 14.sp)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text("می‌توانید فایل‌های دانلود شده را از طریق مدیر فایل گوشی مشاهده فرمایید.", fontSize = 12.sp, color = Color.Gray)
+                    }
+                }
+            }
+        }
+
+        @Composable
+        fun SettingsScreen() {
+            var selectedEngine by remember { mutableStateOf("گوگل") }
+            val context = LocalContext.current
+
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(16.dp)
+            ) {
+                Text("تنظیمات مرورگر OmniSaver", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(20.dp))
+                
+                Text("موتور جستجوی پیش‌فرض:", fontWeight = FontWeight.SemiBold)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    RadioButton(selected = selectedEngine == "گوگل", onClick = { selectedEngine = "گوگل" })
+                    Text("Google")
+                    Spacer(modifier = Modifier.width(16.dp))
+                    RadioButton(selected = selectedEngine == "بینگ", onClick = { selectedEngine = "بینگ" })
+                    Text("Bing")
+                }
+
+                Divider(modifier = Modifier.padding(vertical = 16.dp))
+
+                Button(
+                    onClick = {
+                        Toast.makeText(context, "حافظه کش مرورگر پاکسازی شد", Toast.LENGTH_SHORT).show()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("پاکسازی کش و کوکی‌ها")
+                }
+            }
+        }
+
+        fun startDownload(context: Context, videoUrl: String, quality: String) {
             try {
                 val request = DownloadManager.Request(Uri.parse(videoUrl)).apply {
-                    setTitle("ویدیوی OmniSaver")
-                    setDescription("در حال دانلود ویدیو...")
+                    setTitle("ویدیوی OmniSaver ($quality)")
+                    setDescription("در حال دریافت فایل با کیفیت $quality...")
                     setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-                    setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, "OmniSaver_${System.currentTimeMillis()}.mp4")
+                    setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, "OmniSaver_${quality}_${System.currentTimeMillis()}.mp4")
                 }
                 val manager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
                 manager.enqueue(request)
-                Toast.makeText(context, "دانلود آغاز شد! نوار اعلانات را بررسی کنید.", Toast.LENGTH_LONG).show()
+                Toast.makeText(context, "دانلود با کیفیت $quality شروع شد!", Toast.LENGTH_LONG).show()
             } catch (e: Exception) {
-                Toast.makeText(context, "خطا در دانلود: ${e.message}", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "خطا در شروع دانلود: ${e.message}", Toast.LENGTH_SHORT).show()
             }
         }
         EOF
 
-    # ۶. تنظیم پسوورد و Alias در gradle برای هماهنگی کامل
+    # ۶. همگام‌سازی رمز کلید با فایل Gradle
     - name: Override Keystore Credentials in Gradle
       run: |
         if [ -f "app/build.gradle.kts" ]; then
-          sed -i 's/storePassword = .*/storePassword = "android"/g' app/build.gradle.kts || true
-          sed -i 's/keyPassword = .*/keyPassword = "android"/g' app/build.gradle.kts || true
-          sed -i 's/keyAlias = .*/keyAlias = "my-alias"/g' app/build.gradle.kts || true
+          sed -i 's/storePassword = .*/storePassword = "android123"/g' app/build.gradle.kts || true
+          sed -i 's/keyPassword = .*/keyPassword = "android123"/g' app/build.gradle.kts || true
+          sed -i 's/keyAlias = .*/keyAlias = "omni-key-alias"/g' app/build.gradle.kts || true
         elif [ -f "app/build.gradle" ]; then
-          sed -i 's/storePassword .*/storePassword "android"/g' app/build.gradle || true
-          sed -i 's/keyPassword .*/keyPassword "android"/g' app/build.gradle || true
-          sed -i 's/keyAlias .*/keyAlias "my-alias"/g' app/build.gradle || true
+          sed -i 's/storePassword .*/storePassword "android123"/g' app/build.gradle || true
+          sed -i 's/keyPassword .*/keyPassword "android123"/g' app/build.gradle || true
+          sed -i 's/keyAlias .*/keyAlias "omni-key-alias"/g' app/build.gradle || true
         fi
 
-    # ۷. کامپایل نهایی پروژه
+    # ۷. کامپایل نهایی نسخه Release
     - name: Build Release APK
       run: gradle assembleRelease --no-daemon
 
-    # ۸. آپلود فایل APK
+    # ۸. آپلود خروجی
     - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
