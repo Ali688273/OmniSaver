@@ -43,11 +43,11 @@ jobs:
           -validity 10000 \
           -storepass android123 \
           -keypass android123 \
-          -dname "CN=OmniSaver Store, OU=App, O=OmniSaver, L=Tehran, S=Tehran, C=IR"
+          -dname "CN=Video Downloader, OU=App, O=VideoDownloader, L=Tehran, S=Tehran, C=IR"
         
         cp app/my-release-key.jks my-release-key.jks || true
 
-    # ۳. تنظیم دسترسی‌های مانیفست
+    # ۳. تنظیم مانیفست
     - name: Fix Manifest XML
       run: |
         mkdir -p app/src/main
@@ -58,10 +58,11 @@ jobs:
             <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
             <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
             <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+            <uses-permission android:name="android.permission.DOWNLOAD_WITHOUT_NOTIFICATION" />
 
             <application
                 android:allowBackup="true"
-                android:label="OmniSaver Pro"
+                android:label="دانلود کننده ویدیو"
                 android:icon="@drawable/ic_launcher_foreground"
                 android:supportsRtl="true"
                 android:usesCleartextTraffic="true"
@@ -79,7 +80,7 @@ jobs:
         </manifest>
         EOF
 
-    # ۴. تزریق آیکون برنامه
+    # ۴. آیکون برنامه
     - name: Inject App Icon
       run: |
         mkdir -p app/src/main/res/drawable
@@ -95,8 +96,8 @@ jobs:
         </vector>
         EOF
 
-    # ۵. تزریق کد کامل فیلتر ویدیو و دانلود کیفیت اصلی
-    - name: Inject Smart Video Extractor Code
+    # ۵. کد اصلی مرورگر با تب سوئیچر اختصاصی مشابه کروم
+    - name: Inject Chrome-Style Tab Switcher Code
       run: |
         mkdir -p app/src/main/java/com/example/omnisaver
         cat << 'EOF' > app/src/main/java/com/example/omnisaver/MainActivity.kt
@@ -104,7 +105,7 @@ jobs:
 
         import android.app.DownloadManager
         import android.content.Context
-        import android.content.Intent
+        import android.database.Cursor
         import android.net.Uri
         import android.os.Bundle
         import android.os.Environment
@@ -118,10 +119,14 @@ jobs:
         import androidx.activity.compose.BackHandler
         import androidx.activity.compose.setContent
         import androidx.compose.foundation.background
+        import androidx.compose.foundation.border
         import androidx.compose.foundation.clickable
-        import androidx.compose.foundation.horizontalScroll
         import androidx.compose.foundation.layout.*
-        import androidx.compose.foundation.rememberScrollState
+        import androidx.compose.foundation.lazy.grid.GridCells
+        import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+        import androidx.compose.foundation.lazy.grid.items
+        import androidx.compose.foundation.lazy.LazyColumn
+        import androidx.compose.foundation.lazy.items
         import androidx.compose.foundation.shape.CircleShape
         import androidx.compose.foundation.shape.RoundedCornerShape
         import androidx.compose.material3.*
@@ -136,12 +141,22 @@ jobs:
         import androidx.compose.ui.unit.dp
         import androidx.compose.ui.unit.sp
         import androidx.compose.ui.viewinterop.AndroidView
+        import kotlinx.coroutines.delay
 
         data class TabItem(
             val id: Int,
             var title: String = "صفحه جدید",
             var url: String = "https://www.google.com",
             var webView: WebView? = null
+        )
+
+        data class DownloadItemInfo(
+            val id: Long,
+            val title: String,
+            val progress: Int,
+            val downloadedBytes: Long,
+            val totalBytes: Long,
+            val status: Int
         )
 
         class MainActivity : ComponentActivity() {
@@ -159,11 +174,14 @@ jobs:
             val tabs = remember { mutableStateListOf(TabItem(id = 1)) }
             var activeTabId by remember { mutableStateOf(1) }
             var nextTabId by remember { mutableStateOf(2) }
+            var isTabOverviewOpen by remember { mutableStateOf(false) }
 
             val activeTab = tabs.find { it.id == activeTabId } ?: tabs.firstOrNull()
 
-            BackHandler(enabled = currentBottomTab != 0 || (activeTab?.webView?.canGoBack() == true)) {
-                if (currentBottomTab != 0) {
+            BackHandler(enabled = isTabOverviewOpen || currentBottomTab != 0 || (activeTab?.webView?.canGoBack() == true)) {
+                if (isTabOverviewOpen) {
+                    isTabOverviewOpen = false
+                } else if (currentBottomTab != 0) {
                     currentBottomTab = 0
                 } else if (activeTab?.webView?.canGoBack() == true) {
                     activeTab.webView?.goBack()
@@ -175,7 +193,10 @@ jobs:
                     NavigationBar(containerColor = Color(0xFF0F172A)) {
                         NavigationBarItem(
                             selected = currentBottomTab == 0,
-                            onClick = { currentBottomTab = 0 },
+                            onClick = {
+                                currentBottomTab = 0
+                                isTabOverviewOpen = false
+                            },
                             label = { Text("مرورگر", color = Color.White) },
                             icon = { Text("🌐", fontSize = 20.sp) }
                         )
@@ -199,11 +220,17 @@ jobs:
                         0 -> BrowserTabsScreen(
                             tabs = tabs,
                             activeTabId = activeTabId,
-                            onTabSelected = { activeTabId = it },
+                            isTabOverviewOpen = isTabOverviewOpen,
+                            onToggleTabOverview = { isTabOverviewOpen = !isTabOverviewOpen },
+                            onTabSelected = {
+                                activeTabId = it
+                                isTabOverviewOpen = false
+                            },
                             onNewTab = {
                                 val newId = nextTabId++
                                 tabs.add(TabItem(id = newId))
                                 activeTabId = newId
+                                isTabOverviewOpen = false
                             },
                             onCloseTab = { tabId ->
                                 if (tabs.size > 1) {
@@ -216,10 +243,11 @@ jobs:
                                     tabs[0].url = "https://www.google.com"
                                     tabs[0].title = "صفحه جدید"
                                     tabs[0].webView?.loadUrl("https://www.google.com")
+                                    isTabOverviewOpen = false
                                 }
                             }
                         )
-                        1 -> DownloadsScreen()
+                        1 -> DownloadsTrackerScreen()
                         2 -> SettingsScreen()
                     }
                 }
@@ -231,6 +259,8 @@ jobs:
         fun BrowserTabsScreen(
             tabs: List<TabItem>,
             activeTabId: Int,
+            isTabOverviewOpen: Boolean,
+            onToggleTabOverview: () -> Unit,
             onTabSelected: (Int) -> Unit,
             onNewTab: () -> Unit,
             onCloseTab: (Int) -> Unit
@@ -242,72 +272,106 @@ jobs:
             var detectedVideoUrl by remember { mutableStateOf<String?>(null) }
             var isEyeActive by remember { mutableStateOf(false) }
 
-            Scaffold(
-                topBar = {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(Color(0xFF0F172A))
+            if (isTabOverviewOpen) {
+                // صفحه مدیریت تب‌ها (شبکه‌ای به سبک کروم)
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color(0xFF0F172A))
+                        .padding(16.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 4.dp, vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                        Text(
+                            text = "صفحات باز (${tabs.size})",
+                            color = Color.White,
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Button(
+                            onClick = onNewTab,
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB))
                         ) {
-                            Row(
+                            Text("+ صفحه جدید", color = Color.White)
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(2),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        items(tabs) { tab ->
+                            val isSelected = tab.id == activeTabId
+                            Card(
                                 modifier = Modifier
-                                    .weight(1f)
-                                    .horizontalScroll(rememberScrollState()),
-                                verticalAlignment = Alignment.CenterVertically
+                                    .fillMaxWidth()
+                                    .height(160.dp)
+                                    .border(
+                                        width = if (isSelected) 3.dp else 1.dp,
+                                        color = if (isSelected) Color(0xFF2563EB) else Color.Gray,
+                                        shape = RoundedCornerShape(12.dp)
+                                    )
+                                    .clickable { onTabSelected(tab.id) },
+                                colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B))
                             ) {
-                                tabs.forEach { tab ->
-                                    val isSelected = tab.id == activeTabId
-                                    Surface(
-                                        shape = RoundedCornerShape(8.dp),
-                                        color = if (isSelected) Color(0xFF2563EB) else Color(0xFF1E293B),
-                                        modifier = Modifier
-                                            .padding(end = 4.dp)
-                                            .clickable { onTabSelected(tab.id) }
+                                Column(modifier = Modifier.padding(8.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Row(
-                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
-                                            verticalAlignment = Alignment.CenterVertically
+                                        Text(
+                                            text = tab.title,
+                                            color = Color.White,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                        IconButton(
+                                            onClick = { onCloseTab(tab.id) },
+                                            modifier = Modifier.size(24.dp)
                                         ) {
-                                            Text(
-                                                text = tab.title,
-                                                color = Color.White,
-                                                fontSize = 12.sp,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis,
-                                                modifier = Modifier.widthIn(max = 90.dp)
-                                            )
-                                            Spacer(modifier = Modifier.width(4.dp))
-                                            Text(
-                                                text = "×",
-                                                color = Color.LightGray,
-                                                fontSize = 14.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                modifier = Modifier
-                                                    .padding(2.dp)
-                                                    .clickable { onCloseTab(tab.id) }
-                                            )
+                                            Text("×", color = Color.Red, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                                         }
+                                    }
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .background(Color(0xFF334155), RoundedCornerShape(6.dp))
+                                            .padding(6.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = tab.url,
+                                            color = Color.LightGray,
+                                            fontSize = 10.sp,
+                                            maxLines = 4,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
                                     }
                                 }
                             }
-
-                            IconButton(
-                                onClick = onNewTab,
-                                modifier = Modifier.size(36.dp)
-                            ) {
-                                Text("+", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                            }
                         }
-
+                    }
+                }
+            } else {
+                // نمایش مرورگر
+                Scaffold(
+                    topBar = {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .background(Color(0xFF0F172A))
                                 .padding(8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -323,7 +387,7 @@ jobs:
                                     unfocusedContainerColor = Color.White
                                 )
                             )
-                            Spacer(modifier = Modifier.width(8.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
                             Button(
                                 onClick = {
                                     val target = if (!urlInput.startsWith("http")) "https://www.google.com/search?q=$urlInput" else urlInput
@@ -334,91 +398,105 @@ jobs:
                             ) {
                                 Text("برو")
                             }
+                            Spacer(modifier = Modifier.width(6.dp))
+
+                            // دکمه مربعی تعداد تب‌ها (مشابه گوگل کروم)
+                            Box(
+                                modifier = Modifier
+                                    .size(38.dp)
+                                    .border(2.dp, Color.White, RoundedCornerShape(8.dp))
+                                    .clickable { onToggleTabOverview() },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "${tabs.size}",
+                                    color = Color.White,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    },
+                    floatingActionButton = {
+                        FloatingActionButton(
+                            onClick = {
+                                if (isEyeActive && detectedVideoUrl != null) {
+                                    startDownload(context, detectedVideoUrl!!)
+                                } else {
+                                    Toast.makeText(context, "ویدیو را پخش کنید تا دکمه روشن شود", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            containerColor = if (isEyeActive) Color(0xFF10B981) else Color(0xFF64748B),
+                            contentColor = Color.White,
+                            shape = CircleShape
+                        ) {
+                            Text(if (isEyeActive) "👁 دانلود" else "👁", fontSize = 16.sp, fontWeight = FontWeight.Bold)
                         }
                     }
-                },
-                floatingActionButton = {
-                    FloatingActionButton(
-                        onClick = {
-                            if (isEyeActive && detectedVideoUrl != null) {
-                                // دانلود مستقیم کیفیت اصلی ویدیو بدون گیر دادن به فایلهای متنی
-                                startDownload(context, detectedVideoUrl!!)
-                            } else {
-                                Toast.makeText(context, "ویدیو را پخش کنید تا دکمه دانلود روشن شود", Toast.LENGTH_SHORT).show()
-                            }
-                        },
-                        containerColor = if (isEyeActive) Color(0xFF10B981) else Color(0xFF64748B),
-                        contentColor = Color.White,
-                        shape = CircleShape
+                ) { padding ->
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(padding)
                     ) {
-                        Text(if (isEyeActive) "👁 دانلود" else "👁", fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                    }
-                }
-            ) { padding ->
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(padding)
-                ) {
-                    tabs.forEach { tab ->
-                        val isVisible = tab.id == activeTabId
-                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            AndroidView(
-                                modifier = Modifier.fillMaxSize(),
-                                factory = { ctx ->
-                                    WebView(ctx).apply {
-                                        settings.javaScriptEnabled = true
-                                        settings.domStorageEnabled = true
-                                        settings.mediaPlaybackRequiresUserGesture = false
+                        tabs.forEach { tab ->
+                            val isVisible = tab.id == activeTabId
+                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                AndroidView(
+                                    modifier = Modifier.fillMaxSize(),
+                                    factory = { ctx ->
+                                        WebView(ctx).apply {
+                                            settings.javaScriptEnabled = true
+                                            settings.domStorageEnabled = true
+                                            settings.mediaPlaybackRequiresUserGesture = false
 
-                                        webViewClient = object : WebViewClient() {
-                                            override fun shouldInterceptRequest(
-                                                view: WebView?,
-                                                request: WebResourceRequest?
-                                            ): WebResourceResponse? {
-                                                val reqUrl = request?.url?.toString()?.lowercase() ?: ""
-                                                
-                                                // تشخیص واقعی ویدیوها و فیلتر کردن کدهای آمارگیری متنی
-                                                val isRealVideo = (reqUrl.endsWith(".mp4") || 
-                                                                  reqUrl.endsWith(".m3u8") || 
-                                                                  reqUrl.endsWith(".webm") || 
-                                                                  reqUrl.endsWith(".mov") || 
-                                                                  reqUrl.endsWith(".mkv") || 
-                                                                  (reqUrl.contains("/video/") && !reqUrl.contains("json") && !reqUrl.contains("metrica")))
+                                            webViewClient = object : WebViewClient() {
+                                                override fun shouldInterceptRequest(
+                                                    view: WebView?,
+                                                    request: WebResourceRequest?
+                                                ): WebResourceResponse? {
+                                                    val reqUrl = request?.url?.toString()?.lowercase() ?: ""
+                                                    val isRealVideo = (reqUrl.endsWith(".mp4") || 
+                                                                      reqUrl.endsWith(".m3u8") || 
+                                                                      reqUrl.endsWith(".webm") || 
+                                                                      reqUrl.endsWith(".mov") || 
+                                                                      reqUrl.endsWith(".mkv") || 
+                                                                      (reqUrl.contains("/video/") && !reqUrl.contains("json") && !reqUrl.contains("metrica")))
 
-                                                if (isRealVideo) {
-                                                    if (isVisible) {
-                                                        detectedVideoUrl = request?.url?.toString()
-                                                        isEyeActive = true
+                                                    if (isRealVideo) {
+                                                        if (isVisible) {
+                                                            detectedVideoUrl = request?.url?.toString()
+                                                            isEyeActive = true
+                                                        }
                                                     }
+                                                    return super.shouldInterceptRequest(view, request)
                                                 }
-                                                return super.shouldInterceptRequest(view, request)
-                                            }
 
-                                            override fun onPageFinished(view: WebView?, url: String?) {
-                                                super.onPageFinished(view, url)
-                                                if (url != null) {
-                                                    tab.url = url
-                                                    tab.title = view?.title ?: "تب جدید"
-                                                    if (isVisible) {
-                                                        urlInput = url
+                                                override fun onPageFinished(view: WebView?, url: String?) {
+                                                    super.onPageFinished(view, url)
+                                                    if (url != null) {
+                                                        tab.url = url
+                                                        tab.title = view?.title ?: "تب جدید"
+                                                        if (isVisible) {
+                                                            urlInput = url
+                                                        }
                                                     }
                                                 }
                                             }
+                                            loadUrl(tab.url)
+                                            tab.webView = this
                                         }
-                                        loadUrl(tab.url)
-                                        tab.webView = this
+                                    },
+                                    update = { view ->
+                                        if (!isVisible) {
+                                            view.visibility = android.view.View.GONE
+                                        } else {
+                                            view.visibility = android.view.View.VISIBLE
+                                            urlInput = tab.url
+                                        }
                                     }
-                                },
-                                update = { view ->
-                                    if (!isVisible) {
-                                        view.visibility = android.view.View.GONE
-                                    } else {
-                                        view.visibility = android.view.View.VISIBLE
-                                        urlInput = tab.url
-                                    }
-                                }
-                            )
+                                )
+                            }
                         }
                     }
                 }
@@ -426,40 +504,67 @@ jobs:
         }
 
         @Composable
-        fun DownloadsScreen() {
+        fun DownloadsTrackerScreen() {
             val context = LocalContext.current
+            var downloadList by remember { mutableStateOf<List<DownloadItemInfo>>(emptyList()) }
+
+            LaunchedEffect(Unit) {
+                while (true) {
+                    downloadList = getActiveDownloads(context)
+                    delay(1000)
+                }
+            }
 
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(16.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
+                    .padding(16.dp)
             ) {
-                Text("مدیریت دانلودهای فعال و دریافتی", fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                Spacer(modifier = Modifier.height(16.dp))
+                Text("مدیریت و مشاهده درصد دانلودها", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(12.dp))
 
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFFF1F5F9))
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Text("مشاهده درصد پیشرفت و فایل‌ها", fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text("برای مشاهده وضعیت پیشرفت یا باز کردن فایل دانلود شده، کلیک کنید:", fontSize = 12.sp, color = Color.Gray)
-
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Button(
-                            onClick = {
-                                try {
-                                    val intent = Intent(DownloadManager.ACTION_VIEW_DOWNLOADS)
-                                    context.startActivity(intent)
-                                } catch (e: Exception) {
-                                    Toast.makeText(context, "بخش دانلود سیستم باز نشد", Toast.LENGTH_SHORT).show()
+                if (downloadList.isEmpty()) {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text("هیچ فایلی در حال دانلود نیست", color = Color.Gray, fontSize = 14.sp)
+                    }
+                } else {
+                    LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(downloadList) { item ->
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FAFC))
+                            ) {
+                                Column(modifier = Modifier.padding(12.dp)) {
+                                    Text(item.title, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    
+                                    LinearProgressIndicator(
+                                        progress = item.progress / 100f,
+                                        modifier = Modifier.fillMaxWidth().height(8.dp),
+                                        color = Color(0xFF10B981)
+                                    )
+                                    
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        val downloadedMB = String.format("%.1f", item.downloadedBytes / (1024f * 1024f))
+                                        val totalMB = String.format("%.1f", item.totalBytes / (1024f * 1024f))
+                                        Text("${item.progress}% ($downloadedMB MB از $totalMB MB)", fontSize = 12.sp, color = Color.DarkGray)
+                                        
+                                        Text(
+                                            text = "لغو",
+                                            color = Color.Red,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            modifier = Modifier.clickable {
+                                                cancelDownload(context, item.id)
+                                            }
+                                        )
+                                    }
                                 }
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text("باز کردن پوشه دانلودهای گوشی")
+                            }
                         }
                     }
                 }
@@ -476,7 +581,7 @@ jobs:
                     .fillMaxSize()
                     .padding(16.dp)
             ) {
-                Text("تنظیمات مرورگر OmniSaver", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                Text("تنظیمات دانلود کننده ویدیو", fontSize = 20.sp, fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(20.dp))
 
                 Text("موتور جستجو:", fontWeight = FontWeight.SemiBold)
@@ -506,25 +611,60 @@ jobs:
             try {
                 val cookies = CookieManager.getInstance().getCookie(videoUrl)
                 val request = DownloadManager.Request(Uri.parse(videoUrl)).apply {
-                    setTitle("OmniSaver_Video")
-                    setDescription("در حال دریافت فایل اصلی...")
+                    setTitle("ویدیوی جدید")
+                    setDescription("در حال دانلود فایل...")
                     if (!cookies.isNullOrEmpty()) {
                         addRequestHeader("Cookie", cookies)
                     }
                     addRequestHeader("User-Agent", "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36")
                     setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-                    setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, "OmniSaver_Video_${System.currentTimeMillis()}.mp4")
+                    setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, "Video_${System.currentTimeMillis()}.mp4")
                 }
                 val manager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
                 manager.enqueue(request)
-                Toast.makeText(context, "دانلود ویدیوی اصلی شروع شد! (نوار اعلانات را چک کنید)", Toast.LENGTH_LONG).show()
+                Toast.makeText(context, "دانلود شروع شد! وضعیت را در تب دانلودها ببینید", Toast.LENGTH_LONG).show()
             } catch (e: Exception) {
                 Toast.makeText(context, "خطا در شروع دانلود: ${e.message}", Toast.LENGTH_SHORT).show()
             }
         }
+
+        fun getActiveDownloads(context: Context): List<DownloadItemInfo> {
+            val list = mutableListOf<DownloadItemInfo>()
+            val manager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+            val query = DownloadManager.Query()
+            val cursor: Cursor? = manager.query(query)
+
+            cursor?.use { c ->
+                val idIdx = c.getColumnIndex(DownloadManager.COLUMN_ID)
+                val titleIdx = c.getColumnIndex(DownloadManager.COLUMN_TITLE)
+                val downloadedIdx = c.getColumnIndex(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR)
+                val totalIdx = c.getColumnIndex(DownloadManager.COLUMN_TOTAL_SIZE_BYTES)
+                val statusIdx = c.getColumnIndex(DownloadManager.COLUMN_STATUS)
+
+                while (c.moveToNext()) {
+                    val id = c.getLong(idIdx)
+                    val title = c.getString(titleIdx) ?: "ویدیو"
+                    val downloaded = c.getLong(downloadedIdx)
+                    val total = c.getLong(totalIdx)
+                    val status = c.getInt(statusIdx)
+
+                    val progress = if (total > 0) ((downloaded * 100) / total).toInt() else 0
+                    if (status == DownloadManager.STATUS_RUNNING || status == DownloadManager.STATUS_PENDING) {
+                        list.add(DownloadItemInfo(id, title, progress, downloaded, total, status))
+                    }
+                }
+            }
+            return list
+        }
+
+        fun cancelDownload(context: Context, downloadId: Long) {
+            val manager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+            manager.remove(downloadId)
+            Toast.makeText(context, "دانلود لغو شد", Toast.LENGTH_SHORT).show()
+        }
         EOF
 
-    # ۶. تنظیم پسوورد و Alias کی‌استور
+    # ۶. تنظیم کلید امضا
     - name: Override Keystore Credentials in Gradle
       run: |
         if [ -f "app/build.gradle.kts" ]; then
@@ -537,13 +677,13 @@ jobs:
           sed -i 's/keyAlias .*/keyAlias "omni-key-alias"/g' app/build.gradle || true
         fi
 
-    # ۷. کامپایل نهایی
+    # ۷. ساخت فایل APK
     - name: Build Release APK
       run: gradle assembleRelease --no-daemon
 
-    # ۸. آپلود خروجی فایل
+    # ۸. آپلود فایل APK خروجی
     - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
-        name: OmniSaver-Release-FixedVideo
+        name: VideoDownloader-Release
         path: '**/build/outputs/apk/release/*.apk'
