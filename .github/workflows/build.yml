@@ -96,8 +96,8 @@ jobs:
         </vector>
         EOF
 
-    # ۵. کد اصلی مرورگر با تب سوئیچر اختصاصی مشابه کروم
-    - name: Inject Chrome-Style Tab Switcher Code
+    # ۵. کد اصلاح شده دانلودر با مدیریت کامل تمام فایل‌ها و نمایش وضعیت‌ها
+    - name: Inject Fixed Complete Download Engine Code
       run: |
         mkdir -p app/src/main/java/com/example/omnisaver
         cat << 'EOF' > app/src/main/java/com/example/omnisaver/MainActivity.kt
@@ -105,11 +105,13 @@ jobs:
 
         import android.app.DownloadManager
         import android.content.Context
+        import android.content.Intent
         import android.database.Cursor
         import android.net.Uri
         import android.os.Bundle
         import android.os.Environment
         import android.webkit.CookieManager
+        import android.webkit.DownloadListener
         import android.webkit.WebResourceRequest
         import android.webkit.WebResourceResponse
         import android.webkit.WebView
@@ -156,7 +158,8 @@ jobs:
             val progress: Int,
             val downloadedBytes: Long,
             val totalBytes: Long,
-            val status: Int
+            val status: Int,
+            val localUri: String?
         )
 
         class MainActivity : ComponentActivity() {
@@ -273,7 +276,6 @@ jobs:
             var isEyeActive by remember { mutableStateOf(false) }
 
             if (isTabOverviewOpen) {
-                // صفحه مدیریت تب‌ها (شبکه‌ای به سبک کروم)
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
@@ -365,7 +367,6 @@ jobs:
                     }
                 }
             } else {
-                // نمایش مرورگر
                 Scaffold(
                     topBar = {
                         Row(
@@ -400,7 +401,6 @@ jobs:
                             }
                             Spacer(modifier = Modifier.width(6.dp))
 
-                            // دکمه مربعی تعداد تب‌ها (مشابه گوگل کروم)
                             Box(
                                 modifier = Modifier
                                     .size(38.dp)
@@ -421,7 +421,7 @@ jobs:
                         FloatingActionButton(
                             onClick = {
                                 if (isEyeActive && detectedVideoUrl != null) {
-                                    startDownload(context, detectedVideoUrl!!)
+                                    startDownload(context, detectedVideoUrl!!, "Video_${System.currentTimeMillis()}.mp4")
                                 } else {
                                     Toast.makeText(context, "ویدیو را پخش کنید تا دکمه روشن شود", Toast.LENGTH_SHORT).show()
                                 }
@@ -449,6 +449,13 @@ jobs:
                                             settings.javaScriptEnabled = true
                                             settings.domStorageEnabled = true
                                             settings.mediaPlaybackRequiresUserGesture = false
+                                            settings.userAgentString = "Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Mobile Safari/537.36"
+
+                                            // شنود لینک‌های دانلود (بازی‌ها، فایل‌های zip و مستقیم)
+                                            setDownloadListener(DownloadListener { url, userAgent, contentDisposition, mimetype, contentLength ->
+                                                val fileName = Uri.parse(url).lastPathSegment ?: "File_${System.currentTimeMillis()}"
+                                                startDownload(ctx, url, fileName)
+                                            })
 
                                             webViewClient = object : WebViewClient() {
                                                 override fun shouldInterceptRequest(
@@ -476,7 +483,7 @@ jobs:
                                                     super.onPageFinished(view, url)
                                                     if (url != null) {
                                                         tab.url = url
-                                                        tab.title = view?.title ?: "تب جدید"
+                                                        tab.title = view?.title ?: "صفحه جدید"
                                                         if (isVisible) {
                                                             urlInput = url
                                                         }
@@ -510,7 +517,7 @@ jobs:
 
             LaunchedEffect(Unit) {
                 while (true) {
-                    downloadList = getActiveDownloads(context)
+                    downloadList = getAllDownloads(context)
                     delay(1000)
                 }
             }
@@ -520,12 +527,12 @@ jobs:
                     .fillMaxSize()
                     .padding(16.dp)
             ) {
-                Text("مدیریت و مشاهده درصد دانلودها", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                Text("مدیریت و لیست کلیه دانلودها", fontSize = 18.sp, fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(12.dp))
 
                 if (downloadList.isEmpty()) {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text("هیچ فایلی در حال دانلود نیست", color = Color.Gray, fontSize = 14.sp)
+                        Text("هیچ فایلی هنوز دانلود نشده است", color = Color.Gray, fontSize = 14.sp)
                     }
                 } else {
                     LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -538,30 +545,62 @@ jobs:
                                     Text(item.title, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                     Spacer(modifier = Modifier.height(6.dp))
                                     
+                                    val statusText = when (item.status) {
+                                        DownloadManager.STATUS_SUCCESSFUL -> "تکمیل شده ✅"
+                                        DownloadManager.STATUS_FAILED -> "خطا در دانلود ❌"
+                                        DownloadManager.STATUS_PAUSED -> "متوقف شده ⏸"
+                                        else -> "در حال دریافت (${item.progress}%) ⏳"
+                                    }
+
                                     LinearProgressIndicator(
-                                        progress = item.progress / 100f,
+                                        progress = if (item.status == DownloadManager.STATUS_SUCCESSFUL) 1f else (item.progress / 100f),
                                         modifier = Modifier.fillMaxWidth().height(8.dp),
-                                        color = Color(0xFF10B981)
+                                        color = if (item.status == DownloadManager.STATUS_SUCCESSFUL) Color(0xFF10B981) else Color(0xFF2563EB)
                                     )
                                     
                                     Spacer(modifier = Modifier.height(6.dp))
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         val downloadedMB = String.format("%.1f", item.downloadedBytes / (1024f * 1024f))
                                         val totalMB = String.format("%.1f", item.totalBytes / (1024f * 1024f))
-                                        Text("${item.progress}% ($downloadedMB MB از $totalMB MB)", fontSize = 12.sp, color = Color.DarkGray)
                                         
-                                        Text(
-                                            text = "لغو",
-                                            color = Color.Red,
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            modifier = Modifier.clickable {
-                                                cancelDownload(context, item.id)
+                                        Column {
+                                            Text(statusText, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                            Text("$downloadedMB MB از $totalMB MB", fontSize = 11.sp, color = Color.Gray)
+                                        }
+                                        
+                                        if (item.status == DownloadManager.STATUS_SUCCESSFUL && !item.localUri.isNullOrEmpty()) {
+                                            Button(
+                                                onClick = {
+                                                    try {
+                                                        val intent = Intent(Intent.ACTION_VIEW).apply {
+                                                            setDataAndType(Uri.parse(item.localUri), "*/*")
+                                                            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION
+                                                        }
+                                                        context.startActivity(intent)
+                                                    } catch (e: Exception) {
+                                                        Toast.makeText(context, "برنامه‌ای برای باز کردن فایل پیدا نشد", Toast.LENGTH_SHORT).show()
+                                                    }
+                                                },
+                                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                                shape = RoundedCornerShape(8.dp)
+                                            ) {
+                                                Text("باز کردن فایل", fontSize = 11.sp)
                                             }
-                                        )
+                                        } else {
+                                            Text(
+                                                text = "حذف",
+                                                color = Color.Red,
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                modifier = Modifier.clickable {
+                                                    cancelDownload(context, item.id)
+                                                }
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -607,18 +646,18 @@ jobs:
             }
         }
 
-        fun startDownload(context: Context, videoUrl: String) {
+        fun startDownload(context: Context, downloadUrl: String, filename: String) {
             try {
-                val cookies = CookieManager.getInstance().getCookie(videoUrl)
-                val request = DownloadManager.Request(Uri.parse(videoUrl)).apply {
-                    setTitle("ویدیوی جدید")
+                val cookies = CookieManager.getInstance().getCookie(downloadUrl)
+                val request = DownloadManager.Request(Uri.parse(downloadUrl)).apply {
+                    setTitle(filename)
                     setDescription("در حال دانلود فایل...")
                     if (!cookies.isNullOrEmpty()) {
                         addRequestHeader("Cookie", cookies)
                     }
-                    addRequestHeader("User-Agent", "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36")
+                    addRequestHeader("User-Agent", "Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Mobile Safari/537.36")
                     setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-                    setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, "Video_${System.currentTimeMillis()}.mp4")
+                    setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, filename)
                 }
                 val manager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
                 manager.enqueue(request)
@@ -628,7 +667,7 @@ jobs:
             }
         }
 
-        fun getActiveDownloads(context: Context): List<DownloadItemInfo> {
+        fun getAllDownloads(context: Context): List<DownloadItemInfo> {
             val list = mutableListOf<DownloadItemInfo>()
             val manager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
             val query = DownloadManager.Query()
@@ -640,27 +679,27 @@ jobs:
                 val downloadedIdx = c.getColumnIndex(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR)
                 val totalIdx = c.getColumnIndex(DownloadManager.COLUMN_TOTAL_SIZE_BYTES)
                 val statusIdx = c.getColumnIndex(DownloadManager.COLUMN_STATUS)
+                val localUriIdx = c.getColumnIndex(DownloadManager.COLUMN_LOCAL_URI)
 
                 while (c.moveToNext()) {
                     val id = c.getLong(idIdx)
-                    val title = c.getString(titleIdx) ?: "ویدیو"
+                    val title = c.getString(titleIdx) ?: "فایل دانلود شده"
                     val downloaded = c.getLong(downloadedIdx)
                     val total = c.getLong(totalIdx)
                     val status = c.getInt(statusIdx)
+                    val localUri = if (localUriIdx != -1) c.getString(localUriIdx) else null
 
                     val progress = if (total > 0) ((downloaded * 100) / total).toInt() else 0
-                    if (status == DownloadManager.STATUS_RUNNING || status == DownloadManager.STATUS_PENDING) {
-                        list.add(DownloadItemInfo(id, title, progress, downloaded, total, status))
-                    }
+                    list.add(DownloadItemInfo(id, title, progress, downloaded, total, status, localUri))
                 }
             }
-            return list
+            return list.reversed()
         }
 
         fun cancelDownload(context: Context, downloadId: Long) {
             val manager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
             manager.remove(downloadId)
-            Toast.makeText(context, "دانلود لغو شد", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "دانلود حذف شد", Toast.LENGTH_SHORT).show()
         }
         EOF
 
